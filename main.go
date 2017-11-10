@@ -37,9 +37,10 @@ func checkLastCall() {
 
 func parseTimestamp(content []byte) {
 	t, err := time.Parse(timeLayout, string(content))
-	if err == nil {
-		if time.Since(t) > 30*time.Second {
-			fmt.Println("It's been a long time since last call! 30 seconds!", t)
-		}
+	if err != nil {
+		return
+	}
+	if time.Since(t) > 30*time.Second {
+		fmt.Println("It's been a long time since last call! 30 seconds!", t)
 	}
 }
