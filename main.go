@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -13,33 +12,34 @@ import (
 
 const (
 	fPath        = "pdd.db"
-	timeLayout   = time.RFC3339
+	tLayout      = time.RFC3339
 	timeToNotify = 30 * time.Minute
 )
 
-type Data struct {
-	LastCall, NotifiedToday string
-}
-
-var notifiedAt time.Time
+var (
+	mailgunApiKey       string
+	toEmails, fromEmail []string
+	notifiedAt          time.Time
+)
 
 func main() {
+	setEnvVars()
 	go checkLastCall()
 	http.HandleFunc("/pdd", writeTimestampToDisk)
 	log.Fatalf("error: %v", http.ListenAndServe(":8080", nil))
 }
 
 func writeTimestampToDisk(w http.ResponseWriter, r *http.Request) {
-	timeStr := fmt.Sprintf("%v", time.Now().Format(timeLayout))
-	ioutil.WriteFile(fPath, timeStr, 0600)
+	t := time.Now().Format(tLayout)
+	tStr := fmt.Sprintf("%v", t)
+	ioutil.WriteFile(fPath, []byte(tStr), 0600)
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Created!"))
 }
 
 func checkLastCall() {
 	fContent, err := ioutil.ReadFile(fPath)
 	if err == nil {
-		t, _ := time.Parse(timeLayout, string(fContent))
+		t, _ := time.Parse(tLayout, string(fContent))
 		if time.Since(t) > timeToNotify && notNotifiedToday() {
 			sendMail(t)
 			markTodayAsNotified()
@@ -51,23 +51,23 @@ func checkLastCall() {
 
 func sendMail(t time.Time) {
 	formData := make(url.Values)
-	formData["from"] = []string{"pdd@xsimov.com"}
-	formData["to"] = []string{os.Getenv("EMAIL1"), os.Getenv("EMAIL2")}
+	formData["from"] = fromEmail
+	formData["to"] = toEmails
 	formData["subject"] = []string{"**NO** tinc electricitat!"}
-	formData["text"] = []string{fmt.Sprintf("L'última trucada registrada fou: %v", t)}
+	formData["text"] = []string{fmt.Sprintf("Última trucada registrada: %v", t)}
 
-	url := fmt.Sprintf("https://api:%v@api.mailgun.net/v3/xsimov.com/messages", os.Getenv("MAILGUN_API_KEY"))
+	url := fmt.Sprintf("https://api:%v@api.mailgun.net/v3/xsimov.com/messages", mailgunApiKey)
 	resp, _ := http.PostForm(url, formData)
 	fmt.Println(resp.Status)
 }
 
 func markTodayAsNotified() {
-	db, err := getDataFromDisk()
+	d, err := getDataFromDisk()
 	if err != nil {
 		log.Fatalf("could not mark today as not notified: %v", err)
 	}
-	db.NotifiedToday = fmt.Sprintf("%v", time.Now().Format(timeLayout))
-	err := writeToDisk(db)
+	d.NotifiedToday = fmt.Sprintf("%v", time.Now().Format(tLayout))
+	err = writeToDisk(d)
 	if err != nil {
 		log.Fatalf("could not mark today as not notified: %v", err)
 	}
@@ -76,34 +76,25 @@ func markTodayAsNotified() {
 func notNotifiedToday() bool {
 	d, err := getDataFromDisk()
 	if err != nil {
-		log.Fatalf(err)
+		log.Fatal(err)
 	}
-	lastNotifiedAt, err := time.Parse(timeLayout, d.NotifiedToday)
+	lastNotifiedAt, err := time.Parse(tLayout, d.NotifiedToday)
 	if err != nil {
-		log.Fatalf(err)
+		log.Fatal(err)
 	}
-	return lastNotifiedAt.After(dayStart) && check.Before(dayEnd)
+	dayStart, dayEnd := dayBoundaries()
+	return lastNotifiedAt.After(dayStart) && lastNotifiedAt.Before(dayEnd)
 }
 
-func getDataFromDisk() (*Data, err) {
-	var d Data
-	content, err := ioutil.ReadAll(fPath)
-	if err != nil {
-		return nil, fmt.Errorf("could not read file %v: %v", fPath, err)
-	}
-	err := json.Unmarshal(content, *d)
-	if err != nil {
-		return nil, fmt.Errorf("could not unmarshal %v: %v", content, err)
-	}
-	return d, nil
+func dayBoundaries() (start time.Time, end time.Time) {
+	t := time.Now()
+	start, _ = time.Parse(tLayout, fmt.Sprintf("%d%d%dT00:00:00Z", t.Year(), t.Month(), t.Day()))
+	end = start.Add(24 * time.Hour)
+	return
 }
 
-func writeToDisk(*Data) err {
-	f, err := os.Create(fPath)
-	defer f.Close()
-	if err != nil {
-		return err
-	}
-	f.Write([]byte(json.Marshal(d)))
-	return nil
+func setEnvVars() {
+	toEmails = []string{os.Getenv("TO_EMAIL_1"), os.Getenv("TO_EMAIL_2")}
+	fromEmail = []string{os.Getenv("FROM_EMAIL")}
+	mailgunApiKey = os.Getenv("MAILGUN_API_KEY")
 }
