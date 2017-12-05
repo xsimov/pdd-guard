@@ -7,12 +7,12 @@ import (
 	"os"
 )
 
-type Data struct {
+type data struct {
 	LastCall, NotifiedToday string
 }
 
-func getDataFromDisk() (*Data, error) {
-	var d Data
+func getDataFromDisk() (*data, error) {
+	var d data
 	f, err := os.Open(fPath)
 	if err != nil {
 		return nil, fmt.Errorf("could not read file %v: %v", fPath, err)
@@ -28,7 +28,7 @@ func getDataFromDisk() (*Data, error) {
 	return &d, nil
 }
 
-func writeToDisk(d *Data) error {
+func writeToDisk(d *data) error {
 	f, err := os.Create(fPath)
 	defer f.Close()
 	if err != nil {

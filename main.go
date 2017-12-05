@@ -25,7 +25,7 @@ var (
 func main() {
 	setEnvVars()
 	go checkLastCall()
-	http.HandleFunc("/pdd", writeTimestampToDisk)
+	http.HandleFunc("/electricity", writeTimestampToDisk)
 	log.Fatalf("error: %v", http.ListenAndServe(":8080", nil))
 }
 
